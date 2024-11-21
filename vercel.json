@@ -13,7 +13,6 @@
     }
   ],
   "env": {
-    "MONGO_URI": "@mongodb_connection_string",
     "NODE_ENV": "production"
   }
 }
