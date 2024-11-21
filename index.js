@@ -19,11 +19,12 @@ const app = express();
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
-      'http://localhost:5173',  // Local development
-      'https://job-portal-frontend-ashen.vercel.app',  // Vercel frontend URL
+      'http://localhost:5173',           // Local development frontend
+      'https://job-portal-frontend-ashen.vercel.app', // Production frontend (replace with actual URL)
+      'https://job-portal-frontend-git-main-your-username.vercel.app' // Vercel preview deployments
     ];
-
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -47,19 +48,30 @@ app.use('/api/auth', authRoutes);
 app.use('/api', jobRoutes);
 app.use('/api/applications', applicationRoutes);
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('MongoDB connected successfully'))
-.catch(err => console.error('MongoDB connection error:', err));
+// MongoDB Connection with retry mechanism
+const connectWithRetry = () => {
+  mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    retryWrites: true,
+    w: 'majority'
+  })
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+    // Retry connection after 5 seconds
+    setTimeout(connectWithRetry, 5000);
+  });
+};
+
+connectWithRetry();
 
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({
     message: 'Job Board Server is Running!',
-    timestamp: new Date()
+    timestamp: new Date(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -73,24 +85,15 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Server configuration
+// Server configuration and export for Vercel
 const port = process.env.PORT || 5000;
-const server = app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
 
-// Graceful shutdown
-const gracefulShutdown = (signal) => {
-  console.log(`Received ${signal}. Closing server and database connection...`);
-  server.close(() => {
-    mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed.');
-      process.exit(0);
-    });
+// Only listen if not running in Vercel
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`Local server is running on port ${port}`);
   });
-};
+}
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
+// Export for Vercel serverless functions
 module.exports = app;
